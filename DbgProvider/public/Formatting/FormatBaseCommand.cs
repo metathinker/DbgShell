@@ -800,7 +800,7 @@ namespace MS.Dbg.Formatting.Commands
             return FormatSingleLine( obj, allowMultipleLines: false );
         }
 
-        protected object FormatSingleLine( object obj, bool allowMultipleLines )
+        protected static object FormatSingleLine( object obj, bool allowMultipleLines )
         {
             return FormatAltSingleLineCommand.FormatSingleLineDirect( obj, allowMultipleLines );
 

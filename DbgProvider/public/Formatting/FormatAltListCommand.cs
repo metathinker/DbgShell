@@ -173,6 +173,31 @@ namespace MS.Dbg.Formatting.Commands
             }
             return sb.ToString();
         } // end _Indent()
+
+        /*
+        private string _IndentAndWrap( string val )
+        {
+            int maxWidth = Host.UI.RawUI.BufferSize.Width; // TODO: do we need -1 or anything like that?
+            int linePrefixWidth = m_view.MaxLabelLength + 3; // +3 for " : "
+
+            int roomForFirstLine = maxWidth - linePrefixWidth;
+
+            if( val.Length <= roomForFirstLine )
+            {
+                if( val.IndexOfAny( sm_newlineDelim ) < 0 )
+                    return val; // this is probably a common case
+            }
+
+            // Else we either need to wrap, indent, or both.
+            //
+            // And need to word-break for wrapping...
+            //
+            // And to complicate matters, what if there are embedded control sequences?
+
+            StringBuilder sb = new StringBuilder( val.Length * 2 );
+            sb.A
+        }
+        */
     } // end class FormatAltListCommand
 }
 

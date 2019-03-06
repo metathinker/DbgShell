@@ -192,7 +192,7 @@ namespace MS.Dbg.Formatting
                 return false;
 
             return (Script.ToString() == other.Script.ToString()) &&
-                   (m_label == other.m_label);
+                   (Label == other.Label);
         } // end LooksSimilar()
     } // end class ScriptColumn
 
