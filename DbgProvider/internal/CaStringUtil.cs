@@ -646,10 +646,18 @@ namespace MS.Dbg
                                             int indent,
                                             int addtlContinuationIndent )
         {
+            bool truncate = 0 != (options & IndentAndWrapOptions.TruncateInsteadOfWrap);
+
             int minContent = 2; // 1 char of content, and a newline char
-            if( 0 != (options & IndentAndWrapOptions.TruncateInsteadOfWrap) )
+
+            if( truncate )
             {
                 minContent = 3; // 1 char of content, 1 ellipsis char, and a newline char
+
+                if( addtlContinuationIndent != 0 )
+                {
+                    throw new ArgumentException( "The combination of TruncateInsteadOfWrap and non-zero addtlContinuationIndent makes no sense." );
+                }
             }
 
             if( (indent + addtlContinuationIndent) > (outputWidth - minContent) )
@@ -831,7 +839,6 @@ namespace MS.Dbg
                         _rememberLastSpaceOrTabIndexes();
                     }
 
-                    bool truncate = 0 != (options & IndentAndWrapOptions.TruncateInsteadOfWrap);
                     bool moreContentAfterTruncation = false;
 
                     if( truncate )
@@ -841,10 +848,6 @@ namespace MS.Dbg
                         sb.Append( (char) 0x2026 ); // ellipsis
 
                         moreContentAfterTruncation = _seekToNextLine();
-                        backtracked = true; // current char has been accounted for
-
-                        // No tests yet
-                        throw new NotImplementedException();
                     }
                     else
                     {
@@ -870,7 +873,7 @@ namespace MS.Dbg
                         _completeLineAndIndent( totalIndent, isWrap: !truncate );
                     }
 
-                    if( !backtracked )
+                    if( !truncate && !backtracked )
                     {
                         // If we didn't backtrack, then we haven't yet accounted for the
                         // current character--don't lose it!
@@ -1669,6 +1672,13 @@ namespace MS.Dbg
                                                    indent: 1,
                                                    addtlContinuationIndent: 0,
                                                    expectedOutput: "  1\n2\n 3\n4\n 5\n6\n 7\n8\n 9" ),
+
+            new CaStringUtilIndentAndWrapTestCase( "1 2\n3 4\n5 6\n7 8\n9",
+                                                   outputWidth: 4,
+                                                   options: IndentAndWrapOptions.TruncateInsteadOfWrap,
+                                                   indent: 1,
+                                                   addtlContinuationIndent: 0,
+                                                   expectedOutput: " 1…\n 3…\n 5…\n 7…\n 9" ),
 
         };
 
