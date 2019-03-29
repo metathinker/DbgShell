@@ -640,6 +640,9 @@ namespace MS.Dbg
                                                                  // leading space is longer than the entire outputWidth
         }
 
+        private const string c_PushAndReset  = "\u009b56;0m";
+        private const string c_StandalonePop = "\u009b57m";
+
         public static string IndentAndWrap( string str,
                                             int outputWidth,
                                             IndentAndWrapOptions options,
@@ -683,8 +686,17 @@ namespace MS.Dbg
             int lastSpaceOrTabSrcIdx = -1;
             int lastSpaceOrTabDstIdx = -1;
 
+            // We may need to replace the last char of content (space or not) when
+            // truncating (to put an ellipsis in its place).
+            int lastContentDstIdx = -1;
+
             bool inLeadingSpace = true;
             int leadingSpaceLen = 0;
+
+            // So that we don't need to inserts push/pops for plain text.
+            bool haveSeenControlSequence = false;
+
+            bool pushInserted = false;
 
             void _insertIndent( int numSpaces )
             {
@@ -695,6 +707,11 @@ namespace MS.Dbg
             {
                 lastSpaceOrTabSrcIdx = srcIdx;
                 lastSpaceOrTabDstIdx = sb.Length;
+            }
+
+            void _rememberLastContentIndex()
+            {
+                lastContentDstIdx = sb.Length;
             }
 
             bool _weHaveConsumedAllAvailableOutputWidth()
@@ -729,6 +746,7 @@ namespace MS.Dbg
             {
                 while( _stillInBounds() && (str[ srcIdx ] == CSI) )
                 {
+                    haveSeenControlSequence = true;
                     int pastSeq = _SkipControlSequence( str, srcIdx ); // TODO: make _SkipControlSequence not assert if first char isn't CSI?
                     sb.Append( str, srcIdx, pastSeq - srcIdx );
                     srcIdx = pastSeq;
@@ -736,17 +754,49 @@ namespace MS.Dbg
                 return _stillInBounds();
             }
 
+            void _saveAndResetSgrState()
+            {
+                if( haveSeenControlSequence && !pushInserted )
+                {
+                    sb.Append( c_PushAndReset );
+                    pushInserted = true;
+                }
+            }
+
+            void _restoreSgrState()
+            {
+                if( haveSeenControlSequence )
+                {
+                    Util.Assert( pushInserted );
+
+                    sb.Append( c_StandalonePop );
+                    pushInserted = false;
+                }
+            }
+
             void _completeLineAndIndent( int numSpaces, bool isWrap )
             {
+                // Save the current SGR (color) state and (temporarily) reset to default,
+                // if necessary.
+                _saveAndResetSgrState();
+
                 sb.Append( '\n' );
                 _insertIndent( numSpaces );
+
+                // Restore the SGR state.
+                _restoreSgrState();
 
                 // Need to reset various counters/state:
 
                 spaceToUse = outputWidth - numSpaces - 1; // "- 1" because the newline actually uses a spot.
 
+                Util.Assert( !pushInserted );
+
                 lastSpaceOrTabSrcIdx = -1;
                 lastSpaceOrTabDstIdx = -1;
+
+                // This should not be needed... but I'm doing it defensively.
+                lastContentDstIdx = -1;
 
                 if( !isWrap )
                 {
@@ -758,6 +808,8 @@ namespace MS.Dbg
 
             void _appendContentChar( char c )
             {
+                _rememberLastContentIndex();
+
                 if( Char.IsWhiteSpace( c ) )
                 {
                     if( !inLeadingSpace )
@@ -843,11 +895,19 @@ namespace MS.Dbg
 
                     if( truncate )
                     {
-                        // Rewind and slap an ellipsis on the end:
-                        sb.Length = sb.Length - 1;
-                        sb.Append( (char) 0x2026 ); // ellipsis
+                        if( lastContentDstIdx == -1 )
+                            throw new Exception( "unexpected" );
+
+                        // Note that we put the ellipsis /after/ resetting SGR (color)
+                        // state. This is a stylistic choice.
+
+                        sb.Remove( lastContentDstIdx, 1 ); // make way for the ellipsis.
 
                         moreContentAfterTruncation = _seekToNextLine();
+
+                        _saveAndResetSgrState();
+
+                        sb.Append( (char) 0x2026 ); // ellipsis
                     }
                     else
                     {
@@ -871,6 +931,11 @@ namespace MS.Dbg
                     if( !truncate || moreContentAfterTruncation )
                     {
                         _completeLineAndIndent( totalIndent, isWrap: !truncate );
+                    }
+                    else
+                    {
+                        // Don't forget the last POP.
+                        _restoreSgrState();
                     }
 
                     if( !truncate && !backtracked )
@@ -1680,7 +1745,33 @@ namespace MS.Dbg
                                                    addtlContinuationIndent: 0,
                                                    expectedOutput: " 1…\n 3…\n 5…\n 7…\n 9" ),
 
+            new CaStringUtilIndentAndWrapTestCase( "1 2\n\u009b91m3 4\n5 6\n7 8\u009bm\n9",
+                                                   outputWidth: 4,
+                                                   options: IndentAndWrapOptions.TruncateInsteadOfWrap,
+                                                   indent: 1,
+                                                   addtlContinuationIndent: 0,
+                                                   expectedOutput: $" 1…\n \u009b91m3{c_PushAndReset}…\n {c_StandalonePop}5{c_PushAndReset}…\n {c_StandalonePop}7\u009bm{c_PushAndReset}…\n {c_StandalonePop}9" ),
         };
+
+
+        private static string _EscapeStringForDisplay( string s )
+        {
+            StringBuilder sb = new StringBuilder( s.Length * 2 );
+
+            foreach( char c in s )
+            {
+                if( c == CSI )
+                    sb.Append( @"\" ).Append( "u009b" );
+                else if( c == '\r' )
+                    sb.Append( @"\" ).Append( 'r' );
+                else if( c == '\n' )
+                    sb.Append( @"\" ).Append( 'n' );
+                else
+                    sb.Append( c );
+            }
+
+            return sb.ToString();
+        }
 
 
         public static void SelfTest()
@@ -1876,10 +1967,10 @@ namespace MS.Dbg
                     if( 0 != String.CompareOrdinal( output, testCase.ExpectedOutput ) )
                     {
                         indentAndWrapFailures++;
-                        Console.WriteLine( "indentAndWrap test case {0} failed. Expected: {1}, Actual: {2}.",
+                        Console.WriteLine( "indentAndWrap test case {0} failed.\n   Expected: {1}\n     Actual: {2}\n",
                                            i,
-                                           testCase.ExpectedOutput,
-                                           output );
+                                           _EscapeStringForDisplay( testCase.ExpectedOutput ),
+                                           _EscapeStringForDisplay( output ) );
                     }
                 }
                 catch( Exception e )
