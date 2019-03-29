@@ -41,8 +41,8 @@ namespace MS.Dbg
     ///        http://invisible-island.net/xterm/ctlseqs/ctlseqs.html
     /// </para>
     /// </remarks>
-    static class CaStringUtil
-    //public static class CaStringUtil
+    //static class CaStringUtil
+    public static class CaStringUtil
     {
         private const char CSI = '\x9b';  // "Control Sequence Initiator"
         private const string c_ResetColor = "\u009b0m"; // Resets background and foreground color to default.
@@ -407,7 +407,7 @@ namespace MS.Dbg
             if( trimLeft )
             {
                 if( useEllipsis )
-                    dest.Append( "..." );
+                    dest.Append( "..." ); // TODO: use actual ellipsis
 
                 if( -1 == stripContentBoundary )
                     stripContentBoundary = 0;
@@ -426,7 +426,7 @@ namespace MS.Dbg
                     _StripContent( dest, s, realStartIdx + realLength, s.Length - 1 );
 
                 if( useEllipsis )
-                    dest.Append( "..." );
+                    dest.Append( "..." ); // TODO: use actual ellipsis
             }
         } // end Truncate()
 
